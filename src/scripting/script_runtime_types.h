@@ -240,7 +240,7 @@ namespace scripting {
     // IdleWatch: the idle timeout.
     std::uint32_t timeoutMs = 0;
     // IdleWatch: ignore idle inhibitors. SetWallpaperEnabled: enabled. ShowOsd: inactive.
-    // NightLightCommand: the requested on/off state.
+    // NightLightCommand: the requested on/off state. TogglePanel: open only (never close).
     bool flag = false;
     // ShowOsd: progress from 0 to 1, nullopt for no bar.
     std::optional<double> number;

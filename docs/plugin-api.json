@@ -316,5 +316,11 @@
     "noctaliaVersion": null,
     "feature": "ring",
     "introduced": "`ui.ring`, a natively drawn circular progress gauge with `progress`, `fill`, `track`, and `thickness` props."
+  },
+  {
+    "level": 56,
+    "noctaliaVersion": null,
+    "feature": "open-panel",
+    "introduced": "`noctalia.openPanel` for opening a plugin panel without toggling it closed; an attached panel opened from a bar widget that is already open slides to the new click position instead of reopening."
   }
 ]

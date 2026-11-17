@@ -186,9 +186,9 @@ namespace scripting {
           break;
         case ScriptSideEffectKind::TogglePanel:
           if (togglePanelCallback) {
-            togglePanelCallback(effect.title);
+            togglePanelCallback(effect.title, effect.flag);
           } else {
-            api.invokeTogglePanel(effect.title);
+            api.invokeTogglePanel(effect.title, effect.flag);
           }
           break;
         case ScriptSideEffectKind::OpenPluginSettings:

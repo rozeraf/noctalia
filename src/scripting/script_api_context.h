@@ -280,12 +280,13 @@ namespace scripting {
 
     SystemMonitorService* systemMonitor() const noexcept { return m_systemMonitor.load(std::memory_order_acquire); }
 
-    // Toggles a host panel by id. Wired to PanelManager in Application; main thread only.
-    void setTogglePanelHook(std::function<void(const std::string&)> hook) { m_togglePanelHook = std::move(hook); }
+    // Toggles (open = false) or opens (open = true) a host panel by id. Wired to PanelManager in
+    // Application; main thread only.
+    void setTogglePanelHook(std::function<void(const std::string&, bool)> hook) { m_togglePanelHook = std::move(hook); }
 
-    void invokeTogglePanel(const std::string& panelId) const {
+    void invokeTogglePanel(const std::string& panelId, bool open = false) const {
       if (m_togglePanelHook) {
-        m_togglePanelHook(panelId);
+        m_togglePanelHook(panelId, open);
       }
     }
 
@@ -492,7 +493,7 @@ namespace scripting {
     std::function<void(const std::string&, const std::string&)> m_wallpaperHook;
     SetWallpaperMaskHook m_wallpaperMaskHook;
     ClearWallpaperMasksHook m_clearWallpaperMasksHook;
-    std::function<void(const std::string&)> m_togglePanelHook;
+    std::function<void(const std::string&, bool)> m_togglePanelHook;
     std::function<void(const std::string&)> m_openPluginSettingsHook;
     LoadSoundHook m_loadSoundHook;
     PlaySoundHook m_playSoundHook;

@@ -185,6 +185,10 @@ private:
   void prepareFrame(bool needsUpdate, bool needsLayout);
   void applyPendingPanelFocus();
   void destroyPanel();
+  // Moves an open attached, open-near-click panel to a new anchor along its bar
+  // instead of reopening it. Returns false when the panel can't slide there.
+  bool slideAttachedPanel(const std::string& panelId, const PanelOpenRequest& request);
+  void applyAttachedSlide(std::int32_t visual);
   static void handleCaptureCloseFrame(void* data, wl_callback* callback, std::uint32_t time);
   // Called before the panel surface commits so outside-click dismissal is ready
   // for its first frame. The panel rect is excluded separately because
@@ -293,6 +297,23 @@ private:
     AnimationManager::Id animation = 0;
   };
   ContentFit m_contentFit;
+  // An attached panel placed near a click can follow a new anchor along the bar
+  // (a bar menu whose dropdown follows the hovered title). Captured at open.
+  struct AttachedSlide {
+    bool enabled = false;
+    bool vertical = false;   // the bar is vertical: the panel slides along Y
+    std::int32_t minPos = 0; // visual start position range along the bar
+    std::int32_t maxPos = 0;
+    std::int32_t panelMain = 0;        // panel extent along the bar
+    std::int32_t crossOutsetStart = 0; // surface origin = visual - crossOutsetStart
+    std::int32_t visual = 0;           // current visual start position along the bar
+    std::int32_t marginTop = 0;
+    std::int32_t marginRight = 0;
+    std::int32_t marginBottom = 0;
+    std::int32_t marginLeft = 0;
+    AnimationManager::Id animation = 0;
+  };
+  AttachedSlide m_attachedSlide;
   // Fill axes derive their visual size from the compositor-configured surface
   // size in buildScene; that math also needs the trailing shadow bleed.
   bool m_panelFillWidth = false;

@@ -297,12 +297,14 @@ void PluginWidget::create() {
   auto alive = std::weak_ptr<bool>(m_alive);
   m_runtime = std::make_shared<scripting::ScriptRuntime>(
       m_entryId, m_settings, m_scriptApi, m_pluginDir, m_httpClient, m_clipboard,
-      [this, alive](std::string_view panelId) {
+      [this, alive](std::string_view panelId, bool open) {
         auto token = alive.lock();
         if (token == nullptr || !*token) {
           return;
         }
-        requestPanelToggle(panelId);
+        requestPanelToggle(
+            panelId, {}, std::nullopt, std::nullopt, open ? PanelActivation::Open : PanelActivation::Toggle
+        );
       }
   );
 

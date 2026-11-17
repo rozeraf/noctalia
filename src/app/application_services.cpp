@@ -713,7 +713,13 @@ void Application::initStyleThemeAndWayland() {
   });
 
   // Let a plugin toggle one of its own panels.
-  m_scriptApi.setTogglePanelHook([this](const std::string& panelId) { m_panelManager.togglePanel(panelId); });
+  m_scriptApi.setTogglePanelHook([this](const std::string& panelId, bool open) {
+    if (open) {
+      m_panelManager.showPanel(panelId, PanelOpenRequest{});
+    } else {
+      m_panelManager.togglePanel(panelId);
+    }
+  });
 
   m_scriptApi.setIdleWatchHook([this](
                                    std::uint64_t hostId, int watchId, std::uint32_t timeoutMs, bool ignoreInhibitors,

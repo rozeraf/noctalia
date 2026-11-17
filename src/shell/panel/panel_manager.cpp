@@ -608,6 +608,11 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
     return;
   }
 
+  // The same panel opened again near a new click slides there instead of reopening.
+  if (slideAttachedPanel(panelId, request)) {
+    return;
+  }
+
   if (m_closeDesktopWidgetsEditor) {
     m_closeDesktopWidgetsEditor();
   }
@@ -1010,6 +1015,7 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
     m_sourceBarName.clear();
     m_attachedPanelGeometry.reset();
     m_contentFit = {};
+    m_attachedSlide = {};
     m_attachedToBar = false;
     m_attachedOpenAnimationPending = false;
   };
@@ -1091,17 +1097,27 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
       }
       return centered;
     };
+    std::int32_t slideMin = 0;
+    std::int32_t slideMax = 0;
     if (barIsVertical) {
-      const auto minY = barTop + totalStartInset;
+      // A panel placed near a click keeps its surface whole (no start-edge trim below), so it
+      // can slide to a later click; the start bound moves in by at most the shadow bleed.
+      const auto minY =
+          useAnchorForAttached ? std::max(barTop + totalStartInset, crossOutsetStart) : barTop + totalStartInset;
       const auto maxY = std::max(minY, barBottom - static_cast<std::int32_t>(panelHeight) - totalEndInset);
+      slideMin = minY;
+      slideMax = maxY;
       const auto centeredY = barTop + (barBottom - barTop - static_cast<std::int32_t>(panelHeight)) / 2;
       const auto desiredY =
           static_cast<std::int32_t>(std::lround(request.anchorY - static_cast<float>(panelHeight) * 0.5F));
       visualY = alongBar(minY, maxY, centeredY, desiredY);
       visualX = barIsLeft ? barRight - panelOverlap : barLeft - static_cast<std::int32_t>(panelWidth) + panelOverlap;
     } else {
-      const auto minX = barLeft + totalStartInset;
+      const auto minX =
+          useAnchorForAttached ? std::max(barLeft + totalStartInset, crossOutsetStart) : barLeft + totalStartInset;
       const auto maxX = std::max(minX, barRight - static_cast<std::int32_t>(panelWidth) - totalEndInset);
+      slideMin = minX;
+      slideMax = maxX;
       const auto centeredX = barLeft + (barRight - barLeft - static_cast<std::int32_t>(panelWidth)) / 2;
       const auto desiredX =
           static_cast<std::int32_t>(std::lround(request.anchorX - static_cast<float>(panelWidth) * 0.5F));
@@ -1119,6 +1135,9 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
       surfaceX = visualX - crossOutsetStart;
       surfaceY = barIsBottom ? visualY - mainBleedAway : visualY;
     }
+    // Sliding moves the untrimmed surface by its along-bar margin; a surface trimmed at
+    // the start edge (below) reopens instead.
+    const bool slideable = useAnchorForAttached && (barIsVertical ? surfaceY : surfaceX) >= 0;
     // Keep the surface origin on the output by trimming overhang past the start edges;
     // the trimmed bleed is off-screen anyway. Hyprland picks a layer popup's monitor
     // from the parent surface's top-left corner, so an origin on a neighboring output
@@ -1219,6 +1238,20 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
     } else {
       attachedMarginTop = surfaceY - barReserved;
     }
+
+    m_attachedSlide = AttachedSlide{
+        .enabled = slideable,
+        .vertical = barIsVertical,
+        .minPos = slideMin,
+        .maxPos = slideMax,
+        .panelMain = static_cast<std::int32_t>(barIsVertical ? panelHeight : panelWidth),
+        .crossOutsetStart = crossOutsetStart,
+        .visual = barIsVertical ? visualY : visualX,
+        .marginTop = attachedMarginTop,
+        .marginRight = attachedMarginRight,
+        .marginBottom = attachedMarginBottom,
+        .marginLeft = attachedMarginLeft,
+    };
 
     auto attachedConfig = LayerSurfaceConfig{
         .nameSpace = "noctalia-attached-panel",
@@ -1700,6 +1733,7 @@ void PanelManager::destroyPanel() {
   m_sourceBarName.clear();
   m_attachedPanelGeometry.reset();
   m_contentFit = {};
+  m_attachedSlide = {};
   m_attachedToBar = false;
   m_attachedOpenAnimationPending = false;
   if (m_platform != nullptr) {
@@ -1712,6 +1746,94 @@ void PanelManager::destroyPanel() {
     m_afterCaptureClose();
     m_afterCaptureClose = {};
   }
+}
+
+namespace {
+  constexpr float kAttachedSlideMs = 260.0F;
+} // namespace
+
+bool PanelManager::slideAttachedPanel(const std::string& panelId, const PanelOpenRequest& request) {
+  if (!isOpen()
+      || m_closing
+      || m_activePanelId != panelId
+      || m_activePanel == nullptr
+      || !m_attachedToBar
+      || !m_attachedSlide.enabled
+      || m_layerSurface == nullptr
+      || !request.hasAnchorPosition
+      || (request.output != nullptr && request.output != m_output)
+      || (!request.sourceBarName.empty() && request.sourceBarName != m_sourceBarName)
+      || !openNearClickEnabled(m_activePanel, panelId, m_config)) {
+    return false;
+  }
+  // Still revealing: the reveal animates a fixed geometry, so let a reopen restart it.
+  if (m_attachedOpenAnimationPending || m_attachedRevealProgress < 1.0F) {
+    return false;
+  }
+
+  const float anchor = m_attachedSlide.vertical ? request.anchorY : request.anchorX;
+  const auto desired =
+      static_cast<std::int32_t>(std::lround(anchor - static_cast<float>(m_attachedSlide.panelMain) * 0.5F));
+  const std::int32_t target = std::clamp(desired, m_attachedSlide.minPos, m_attachedSlide.maxPos);
+  if (target - m_attachedSlide.crossOutsetStart < 0) {
+    return false;
+  }
+
+  if (m_attachedSlide.animation != 0) {
+    m_animations.cancel(m_attachedSlide.animation);
+    m_attachedSlide.animation = 0;
+  }
+  if (target != m_attachedSlide.visual) {
+    // Decelerating ease over a little more than a reveal: the panel leaves quickly and settles
+    // under the new anchor.
+    m_attachedSlide.animation = m_animations.animate(
+        static_cast<float>(m_attachedSlide.visual), static_cast<float>(target), kAttachedSlideMs, Easing::EaseOutCubic,
+        [this](float v) { applyAttachedSlide(static_cast<std::int32_t>(std::lround(v))); },
+        [this] { m_attachedSlide.animation = 0; }, m_sceneRoot.get()
+    );
+  }
+
+  // Same contract as showPanel on an open panel: a new context reaches the panel.
+  if (!request.context.empty() && !m_activePanel->isContextActive(request.context)) {
+    m_activePanel->onOpen(request.context);
+  }
+  refresh();
+  return true;
+}
+
+void PanelManager::applyAttachedSlide(std::int32_t visual) {
+  const std::int32_t delta = visual - m_attachedSlide.visual;
+  if (delta == 0 || m_layerSurface == nullptr) {
+    return;
+  }
+  m_attachedSlide.visual = visual;
+  const std::int32_t origin = visual - m_attachedSlide.crossOutsetStart;
+  const auto shift = [&](AttachedPanelGeometry& g) {
+    (m_attachedSlide.vertical ? g.y : g.x) += static_cast<float>(delta);
+  };
+  if (m_attachedSlide.vertical) {
+    m_attachedSlide.marginTop = origin;
+    m_contentFit.slotOutputY += delta;
+  } else {
+    m_attachedSlide.marginLeft = origin;
+  }
+  m_layerSurface->setMargins(
+      m_attachedSlide.marginTop, m_attachedSlide.marginRight, m_attachedSlide.marginBottom, m_attachedSlide.marginLeft
+  );
+  if (m_attachedPanelGeometry.has_value()) {
+    shift(*m_attachedPanelGeometry);
+  }
+  if (m_contentFit.attachedSlotGeometry.has_value()) {
+    shift(*m_contentFit.attachedSlotGeometry);
+  }
+  if (m_panelOutputInputRect.has_value()) {
+    (m_attachedSlide.vertical ? m_panelOutputInputRect->y : m_panelOutputInputRect->x) += delta;
+    if (m_output != nullptr) {
+      m_clickShield.setPanelInputRect(m_output, *m_panelOutputInputRect);
+    }
+  }
+  // The bar redraws its seam and shadow cut-out around the moved panel.
+  publishAttachedPanelGeometry(m_attachedRevealProgress);
 }
 
 void PanelManager::togglePanel(const std::string& panelId, PanelOpenRequest request) {

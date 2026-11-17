@@ -776,6 +776,17 @@ namespace {
     return 0;
   }
 
+  // openPanel(panelId) — like togglePanel, but never closes: an open panel stays open, and an
+  // attached panel opened near a click from a bar widget moves to the pointer.
+  int luau_openPanel(lua_State* L) {
+    size_t len = 0;
+    const char* panelId = luaL_checklstring(L, 1, &len);
+    if (auto* host = hostForState(L)) {
+      host->scriptOpenPanel(std::string(panelId, len));
+    }
+    return 0;
+  }
+
   // openSettings() — open the settings window at this plugin's own settings. The plugin id comes
   // from the host, so a plugin can only ever open its own page.
   int luau_openSettings(lua_State* L) {
@@ -2401,6 +2412,7 @@ namespace {
       {"wallpaperPath", luau_wallpaperPath},
       {"setWallpaperMask", luau_setWallpaperMask},
       {"togglePanel", luau_togglePanel},
+      {"openPanel", luau_openPanel},
       {"openSettings", luau_openSettings},
       {"isDarkMode", luau_isDarkMode},
       {"getColor", luau_getColor},
@@ -3608,6 +3620,14 @@ void LuauHost::scriptTogglePanel(std::string panelId) {
   if (m_scriptContext != nullptr) {
     m_scriptContext->sideEffects.push_back(
         {.kind = scripting::ScriptSideEffectKind::TogglePanel, .title = std::move(panelId), .body = {}}
+    );
+  }
+}
+
+void LuauHost::scriptOpenPanel(std::string panelId) {
+  if (m_scriptContext != nullptr) {
+    m_scriptContext->sideEffects.push_back(
+        {.kind = scripting::ScriptSideEffectKind::TogglePanel, .title = std::move(panelId), .body = {}, .flag = true}
     );
   }
 }

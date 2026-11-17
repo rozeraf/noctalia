@@ -238,6 +238,7 @@ public:
   void scriptSetWallpaperMask(std::string outputName, std::string path, std::string wallpaperPath);
   // Toggle a host panel by id ("author/plugin:panel"). Queued, applied on the main thread.
   void scriptTogglePanel(std::string panelId);
+  void scriptOpenPanel(std::string panelId);
   // Open the settings window at this plugin's own settings. Queued, applied on the main thread.
   void scriptOpenSettings();
   // noctalia.idle.watch()/unwatch(): compositor idle notifications. The Wayland objects live on
